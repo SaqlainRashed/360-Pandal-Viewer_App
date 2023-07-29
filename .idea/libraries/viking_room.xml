@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="viking_room">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/load-3d-model/public/model/viking_room.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
