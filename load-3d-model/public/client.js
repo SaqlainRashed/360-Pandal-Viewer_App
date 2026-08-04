@@ -91,8 +91,14 @@ const init = () => {
     backLight.add(spotLight3.position, "z", -40, 40, 1);
 
     // loding gltf 3d model
+    const ALLOWED_MODEL_PATH = './model/scene.glb';
+    const modelPath = ALLOWED_MODEL_PATH;
+    if (modelPath !== ALLOWED_MODEL_PATH || !/^\.\//i.test(modelPath) || /(\.\.|:|\/\/)/.test(modelPath)) {
+        console.error('Invalid model path: loading aborted.');
+        return;
+    }
     const loader = new GLTFLoader();
-    loader.load('./model/scene.glb', (gltf) => {
+    loader.load(modelPath, (gltf) => {
         house = gltf.scene.children[0];
         house.scale.set(0.4, 0.4, 0.4)
         house.position.set(0, -1.3, 0)
