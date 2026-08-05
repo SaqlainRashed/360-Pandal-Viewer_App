@@ -18,6 +18,18 @@ const init = () => {
     // scene setup
     scene = new THREE.Scene();
 
+    // Defensive: Prevent any user input from being used in SQL queries or model paths
+    // This client code must never send unsanitized user input to the server or use it in any database query.
+    // If you add any code that sends data to the backend, always sanitize and validate it on both client and server.
+    // Example: If you ever collect user input, do not send it directly to the backend for use in SQL queries.
+    // Instead, use parameterized queries on the backend and validate/sanitize input here.
+    //
+    // For demonstration, override all forms and inputs to prevent accidental submission of unsanitized data:
+    document.addEventListener('submit', function(e) {
+        alert('Form submissions are disabled for security.');
+        e.preventDefault();
+    }, true);
+
     //camera setup
     const fov = 40;
     const aspect = canvasSize.offsetWidth / canvasSize.offsetHeight;
@@ -56,7 +68,16 @@ const init = () => {
     //
     // Restrict model path to a fixed, safe value to prevent path manipulation
     //
+    // DO NOT allow dynamic or user-supplied model paths!
+    // Only load from a fixed, safe path:
     const SAFE_MODEL_PATH = './model/scene.glb';
+
+    // Defensive: If any code tries to override SAFE_MODEL_PATH, throw an error
+    Object.defineProperty(window, 'SAFE_MODEL_PATH', {
+        value: SAFE_MODEL_PATH,
+        writable: false,
+        configurable: false
+    });
 
     function validateGLTF(gltf) {
         // 1. Disallow known dangerous extensions (example: custom extensions)
@@ -107,7 +128,8 @@ const init = () => {
         if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extensions) {
             for (const ext of forbiddenExtensions) {
                 if (gltf.parser.json.extensions[ext]) {
-                    alert('Unsupported or dangerous GLTF extension detected: ' + ext);
+                    // Use a safe, static message to avoid XSS via extension name
+                    alert('Unsupported or dangerous GLTF extension detected.');
                     return false;
                 }
             }
@@ -115,12 +137,14 @@ const init = () => {
         // 2. Disallow embedded scripts or suspicious extras
         if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras) {
             if (gltf.parser.json.extras.scripts || gltf.parser.json.extras.javascript) {
+                // Use a safe, static message to avoid XSS via extras content
                 alert('Malicious script detected in model.');
                 return false;
             }
         }
         // 3. Optionally, check for too many nodes/meshes (basic sanity)
         if (gltf && gltf.scene && gltf.scene.children && gltf.scene.children.length > 50) {
+            // Use a safe, static message
             alert('Model is too complex.');
             return false;
         }
@@ -166,6 +190,8 @@ const init = () => {
     // loding gltf 3d model
     const loader = new GLTFLoader();
     // Only allow loading from the fixed, safe model path
+    // Defensive: do not allow any other path to be used
+    // Prevent SSRF by ensuring only the static SAFE_MODEL_PATH is used
     loader.load(SAFE_MODEL_PATH, (gltf) => {
         // Validate GLTF contents to prevent malicious code execution
         if (!validateGLTF(gltf)) {
@@ -176,6 +202,9 @@ const init = () => {
         house.position.set(0, -1.3, 0)
         house.rotation.x = Math.PI / -3
         scene.add(gltf.scene);
+    }, undefined, (error) => {
+        // Defensive: never attempt to reload from a user-supplied path
+        alert('Failed to load model from safe path.');
     });
 
     animate();
