@@ -53,6 +53,79 @@ const init = () => {
     spotLight1.castShadow = true;
     const spotLightHelper1 = new THREE.SpotLightHelper(spotLight1, 1, 0x00ff00);
     scene.add(spotLight1);
+    //
+    // Restrict model path to a fixed, safe value to prevent path manipulation
+    //
+    const SAFE_MODEL_PATH = './model/scene.glb';
+
+    function validateGLTF(gltf) {
+        // 1. Disallow known dangerous extensions (example: custom extensions)
+        const forbiddenExtensions = [
+            'KHR_draco_mesh_compression',
+            'KHR_mesh_quantization',
+            'EXT_lights_image_based',
+            'KHR_xmp_json_ld',
+            'KHR_materials_unlit',
+            'KHR_materials_pbrSpecularGlossiness',
+            'KHR_materials_clearcoat',
+            'KHR_materials_transmission',
+            'KHR_materials_sheen',
+            'KHR_materials_specular',
+            'KHR_materials_ior',
+            'KHR_materials_emissive_strength',
+            'KHR_materials_volume',
+            'KHR_materials_iridescence',
+            'KHR_materials_anisotropy',
+            'KHR_materials_variants',
+            'KHR_animation_pointer',
+            'KHR_animation_morph_target_weights',
+            'KHR_animation_texture_sampler',
+            'KHR_animation_texture',
+            'KHR_lights_punctual',
+            'KHR_texture_transform',
+            'KHR_texture_basisu',
+            'KHR_mesh_gpu_instancing',
+            'KHR_node_groups',
+            'KHR_materials_displacement',
+            'KHR_materials_specular',
+            'KHR_materials_transmission',
+            'KHR_materials_volume',
+            'KHR_materials_iridescence',
+            'KHR_materials_anisotropy',
+            'KHR_materials_variants',
+            'KHR_animation_pointer',
+            'KHR_animation_morph_target_weights',
+            'KHR_animation_texture_sampler',
+            'KHR_animation_texture',
+            'KHR_lights_punctual',
+            'KHR_texture_transform',
+            'KHR_texture_basisu',
+            'KHR_mesh_gpu_instancing',
+            'KHR_node_groups',
+            'KHR_materials_displacement'
+        ];
+        if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extensions) {
+            for (const ext of forbiddenExtensions) {
+                if (gltf.parser.json.extensions[ext]) {
+                    alert('Unsupported or dangerous GLTF extension detected: ' + ext);
+                    return false;
+                }
+            }
+        }
+        // 2. Disallow embedded scripts or suspicious extras
+        if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras) {
+            if (gltf.parser.json.extras.scripts || gltf.parser.json.extras.javascript) {
+                alert('Malicious script detected in model.');
+                return false;
+            }
+        }
+        // 3. Optionally, check for too many nodes/meshes (basic sanity)
+        if (gltf && gltf.scene && gltf.scene.children && gltf.scene.children.length > 50) {
+            alert('Model is too complex.');
+            return false;
+        }
+        return true;
+    }
 
     // orenge light setup
     const spotLight2 = new THREE.SpotLight(0xf57d22, 2);
@@ -92,7 +165,12 @@ const init = () => {
 
     // loding gltf 3d model
     const loader = new GLTFLoader();
-    loader.load('./model/scene.glb', (gltf) => {
+    // Only allow loading from the fixed, safe model path
+    loader.load(SAFE_MODEL_PATH, (gltf) => {
+        // Validate GLTF contents to prevent malicious code execution
+        if (!validateGLTF(gltf)) {
+            return;
+        }
         house = gltf.scene.children[0];
         house.scale.set(0.4, 0.4, 0.4)
         house.position.set(0, -1.3, 0)
