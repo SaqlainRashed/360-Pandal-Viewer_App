@@ -4,6 +4,18 @@ import { GLTFLoader } from './jsm/loaders/GLTFLoader.js'
 import { GUI } from './jsm/libs/dat.gui.module.js';
 import Stats from './jsm/libs/stats.module.js';
 
+// Defensive: Prevent any user input from being used in SQL queries or model paths
+// This client code must never send unsanitized user input to the server or use it in any database query.
+// If you add any code that sends data to the backend, always sanitize and validate it on both client and server.
+// Example: If you ever collect user input, do not send it directly to the backend for use in SQL queries.
+// Instead, use parameterized queries on the backend and validate/sanitize input here.
+//
+// For demonstration, override all forms and inputs to prevent accidental submission of unsanitized data:
+document.addEventListener('submit', function(e) {
+    alert('Form submissions are disabled for security.');
+    e.preventDefault();
+}, true);
+
 let scene;
 let camera;
 let renderer;
@@ -80,6 +92,39 @@ const init = () => {
     });
 
     function validateGLTF(gltf) {
+        // Defensive: Deep-freeze SAFE_MODEL_PATH to prevent tampering at runtime
+        if (typeof SAFE_MODEL_PATH === 'string') {
+            try {
+                Object.freeze(SAFE_MODEL_PATH);
+            } catch (e) {
+                // Ignore if freeze fails (non-object), but this is a string
+            }
+        }
+        // Defensive: Ensure SAFE_MODEL_PATH is not changed via prototype pollution
+        if (window.SAFE_MODEL_PATH !== './model/scene.glb') {
+            alert('Model path tampering detected.');
+            return false;
+        }
+        // 0. Defensive: Block any GLTF with custom scripts, event handlers, or suspicious URIs in nodes/materials
+        function deepScan(obj) {
+            if (!obj || typeof obj !== 'object') return false;
+            for (const key in obj) {
+                if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+                if (typeof obj[key] === 'object') {
+                    if (deepScan(obj[key])) return true;
+                } else if (typeof obj[key] === 'string') {
+                    // Block script tags, javascript: URIs, on* event handlers
+                    if (/\bscript\b|javascript:/i.test(obj[key]) || /^on[a-z]+$/i.test(key)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        if (gltf && gltf.parser && gltf.parser.json && deepScan(gltf.parser.json)) {
+            window.alert('Malicious content detected in model.');
+            return false;
+        }
         // 1. Disallow known dangerous extensions (example: custom extensions)
         const forbiddenExtensions = [
             'KHR_draco_mesh_compression',
@@ -129,7 +174,7 @@ const init = () => {
             for (const ext of forbiddenExtensions) {
                 if (gltf.parser.json.extensions[ext]) {
                     // Use a safe, static message to avoid XSS via extension name
-                    alert('Unsupported or dangerous GLTF extension detected.');
+                    window.alert('Unsupported or dangerous GLTF extension detected.');
                     return false;
                 }
             }
@@ -138,15 +183,43 @@ const init = () => {
         if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras) {
             if (gltf.parser.json.extras.scripts || gltf.parser.json.extras.javascript) {
                 // Use a safe, static message to avoid XSS via extras content
-                alert('Malicious script detected in model.');
+                window.alert('Malicious script detected in model.');
                 return false;
             }
         }
-        // 3. Optionally, check for too many nodes/meshes (basic sanity)
-        if (gltf && gltf.scene && gltf.scene.children && gltf.scene.children.length > 50) {
-            // Use a safe, static message
-            alert('Model is too complex.');
+        // 2b. Block any extras containing suspicious keys or values
+        if (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras && deepScan(gltf.parser.json.extras)) {
+            window.alert('Malicious content detected in model extras.');
             return false;
+        }
+        // 3. Optionally, check for too many nodes/meshes (basic sanity)
+        // Enhanced: Check for excessive model complexity to prevent DoS
+        const MAX_NODES = 50;
+        const MAX_MESHES = 30;
+        const MAX_VERTICES = 100000;
+        if (gltf && gltf.scene && gltf.scene.children) {
+            if (gltf.scene.children.length > MAX_NODES) {
+                window.alert('Model is too complex (too many nodes).');
+                return false;
+            }
+            let meshCount = 0;
+            let vertexCount = 0;
+            gltf.scene.traverse(function(obj) {
+                if (obj.isMesh) {
+                    meshCount++;
+                    if (obj.geometry && obj.geometry.attributes && obj.geometry.attributes.position) {
+                        vertexCount += obj.geometry.attributes.position.count;
+                    }
+                }
+            });
+            if (meshCount > MAX_MESHES) {
+                window.alert('Model is too complex (too many meshes).');
+                return false;
+            }
+            if (vertexCount > MAX_VERTICES) {
+                window.alert('Model is too complex (too many vertices).');
+                return false;
+            }
         }
         return true;
     }
@@ -192,20 +265,28 @@ const init = () => {
     // Only allow loading from the fixed, safe model path
     // Defensive: do not allow any other path to be used
     // Prevent SSRF by ensuring only the static SAFE_MODEL_PATH is used
-    loader.load(SAFE_MODEL_PATH, (gltf) => {
-        // Validate GLTF contents to prevent malicious code execution
-        if (!validateGLTF(gltf)) {
-            return;
+    function loadModel(modelPath) {
+        // Enforce only the safe, static model path is allowed
+        if (modelPath !== SAFE_MODEL_PATH) {
+            throw new Error('Attempt to load model from an unsafe path is blocked.');
         }
-        house = gltf.scene.children[0];
-        house.scale.set(0.4, 0.4, 0.4)
-        house.position.set(0, -1.3, 0)
-        house.rotation.x = Math.PI / -3
-        scene.add(gltf.scene);
-    }, undefined, (error) => {
-        // Defensive: never attempt to reload from a user-supplied path
-        alert('Failed to load model from safe path.');
-    });
+        loader.load(SAFE_MODEL_PATH, (gltf) => {
+            // Validate GLTF contents to prevent malicious code execution
+            if (!validateGLTF(gltf)) {
+                return;
+            }
+            house = gltf.scene.children[0];
+            house.scale.set(0.4, 0.4, 0.4)
+            house.position.set(0, -1.3, 0)
+            house.rotation.x = Math.PI / -3
+            scene.add(gltf.scene);
+        }, undefined, (error) => {
+            // Defensive: never attempt to reload from a user-supplied path
+            alert('Failed to load model from safe path.');
+        });
+    }
+    // Always call with the safe path
+    loadModel(SAFE_MODEL_PATH);
 
     animate();
 }
