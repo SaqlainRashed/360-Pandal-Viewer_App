@@ -1,7 +1,11 @@
 const express = require('express');
 const app = express();
 const path = require('path');
+const csrf = require('csrf');
+const tokens = new csrf();
+const secret = tokens.secretSync();
 
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public'), {
     dotfiles: 'ignore',
     index: false,
