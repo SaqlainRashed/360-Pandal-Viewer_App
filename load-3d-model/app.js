@@ -5,6 +5,19 @@ const csrf = require('csrf');
 const tokens = new csrf();
 const secret = tokens.secretSync();
 
+// CSRF middleware: attach a token to every response and validate on state-changing requests
+app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        res.locals.csrfToken = tokens.create(secret);
+        return next();
+    }
+    const token = (req.body && req.body._csrf) || req.headers['x-csrf-token'];
+    if (!tokens.verify(secret, token)) {
+        return res.status(403).send('Invalid CSRF token');
+    }
+    next();
+});
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public'), {
     dotfiles: 'ignore',
